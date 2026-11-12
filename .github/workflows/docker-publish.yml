@@ -11,7 +11,8 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.GTP_RUNNER_LARGE || 'instabox-large' }}
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
