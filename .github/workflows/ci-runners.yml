@@ -1,0 +1,29 @@
+name: CI runner smoke
+
+on:
+  pull_request:
+    paths: ['.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-smoke-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  runner-smoke:
+    runs-on: ${{ vars.GTP_RUNNER_LARGE || 'instabox-large' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check Linux runner and workflow patch
+        run: |
+          test "$RUNNER_OS" = Linux
+          git diff --check HEAD^ HEAD
