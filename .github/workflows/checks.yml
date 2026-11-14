@@ -1,0 +1,44 @@
+# The required status check on main is the job named "checks". It runs on every pull request
+# and every push to main, so branch protection can require it.
+# Checks: locked install, every tracked .js parses, and the server boots and serves its page.
+name: checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  # Pull requests share one group per branch, so a newer push cancels the older run.
+  # Every other run gets its own group: main runs are never cancelled or dropped from the queue.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  checks:
+    runs-on: ${{ vars.GTP_RUNNER_SMALL || 'instabox-small' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          # Same major as the Dockerfile (node:22-alpine).
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Every tracked JavaScript file parses
+        run: git ls-files -z '*.js' | xargs -0 -n1 node --check
+      - name: Server boots and serves the app
+        env:
+          PORT: "3999"
+          NODE_ENV: production
+        run: |
+          node server.js > "$RUNNER_TEMP/server.log" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/"; then echo "server answered on :$PORT"; kill "$pid"; exit 0; fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          echo "server did not answer"; cat "$RUNNER_TEMP/server.log"; exit 1
